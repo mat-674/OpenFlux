@@ -19,9 +19,41 @@ $DestDir = if ($env:OPENFLUX_PREFIX) { $env:OPENFLUX_PREFIX } else { Join-Path $
 $BinName = if ($env:OPENFLUX_BIN)    { $env:OPENFLUX_BIN }    else { 'openflux' }
 $ExeName = "$BinName.exe"
 
-function Log($m) { Write-Host "==> $m" -ForegroundColor Green }
+function Log($m)  { Write-Host "==> $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "!!  $m" -ForegroundColor Yellow }
-function Die($m) { Write-Host "xx  $m" -ForegroundColor Red; exit 1 }
+function Die($m)  { Write-Progress -Activity 'OpenFlux installer' -Completed; Write-Host "xx  $m" -ForegroundColor Red; exit 1 }
+
+# --------------------------------------------------------------- progress ---
+$Step = 0
+$StepTotal = 6
+
+function Start-Stage($Title) {
+    $script:Step++
+    Write-Host ''
+    Write-Host "[$script:Step/$script:StepTotal] $Title" -ForegroundColor Cyan
+    Write-Progress -Activity 'OpenFlux installer' -Status "[$script:Step/$script:StepTotal] $Title" `
+        -PercentComplete ([int](100 * ($script:Step - 1) / $script:StepTotal))
+}
+
+function Complete-Stage($Title) {
+    Write-Host "      done: $Title" -ForegroundColor DarkGray
+}
+
+# Runs one stage: header, live output (child processes write straight to the
+# console), timing, and a readable failure dump.
+function Invoke-Stage($Title, [scriptblock]$Action) {
+    Start-Stage $Title
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    try { & $Action }
+    catch {
+        Write-Progress -Activity 'OpenFlux installer' -Completed
+        Write-Host ("      FAILED ({0:n1}s)" -f $sw.Elapsed.TotalSeconds) -ForegroundColor Red
+        Write-Host "      $($_.Exception.Message)" -ForegroundColor DarkGray
+        Write-Host ''
+        Die $Title
+    }
+    Complete-Stage "$Title ($([math]::Round($sw.Elapsed.TotalSeconds,1))s)"
+}
 
 # ----------------------------------------------------------------- tooling ---
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -46,43 +78,83 @@ function Get-Go {
     Die 'Go installed but not found on PATH. Open a new shell and re-run.'
 }
 
-# ------------------------------------------------------------------ source ---
-$here = (Get-Location).Path
-if ((Test-Path (Join-Path $here 'go.mod')) -and
-    ((Get-Content (Join-Path $here 'go.mod') -TotalCount 1) -match '^module openflux')) {
-    $SrcDir = $here
-    Log "building current checkout: $SrcDir"
-}
-elseif (Test-Path (Join-Path $SrcDir '.git')) {
-    Log "updating $SrcDir"
-    git -C $SrcDir fetch --depth 1 origin $Ref
-    git -C $SrcDir checkout -q FETCH_HEAD
-}
-else {
-    Log "cloning $Repo ($Ref) -> $SrcDir"
-    New-Item -ItemType Directory -Force -Path (Split-Path $SrcDir) | Out-Null
-    git clone --depth 1 --branch $Ref $Repo $SrcDir
+# -------------------------------------------------------------------- main ---
+$ScriptStart = Get-Date
+Write-Host 'OpenFlux installer' -NoNewline
+Write-Host " (windows, ref $Ref)" -ForegroundColor DarkGray
+
+$Go = $null
+
+Invoke-Stage 'Checking prerequisites (git, PATH)' {
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        throw 'git is required. Install it with: winget install Git.Git'
+    }
 }
 
-# ------------------------------------------------------------------- build ---
-$Go = Get-Go
-Push-Location $SrcDir
-try {
-    Log 'resolving dependencies'
-    & $Go mod download
+Invoke-Stage 'Preparing the Go toolchain' { $script:Go = Get-Go }
 
-    Log 'building'
-    $env:CGO_ENABLED = '0'
-    & $Go build -trimpath -ldflags '-s -w' -o $ExeName .
-    if ($LASTEXITCODE -ne 0) { Die 'build failed' }
-    if (-not (Test-Path (Join-Path $SrcDir $ExeName))) { Die 'build produced no binary' }
+Invoke-Stage "Fetching sources ($Ref)" {
+    $here = (Get-Location).Path
+    if ((Test-Path (Join-Path $here 'go.mod')) -and
+        ((Get-Content (Join-Path $here 'go.mod') -TotalCount 1) -match '^module openflux')) {
+        $script:SrcDir = $here
+        Write-Host "using the current checkout: $script:SrcDir" -ForegroundColor DarkGray
+        return
+    }
+    if (Test-Path (Join-Path $SrcDir '.git')) {
+        Write-Host "updating $Script:SrcDir"
+        # No --progress: git writes its own progress straight to this console
+        # when stderr is a terminal, and stays quiet when output is piped.
+        git -C $SrcDir fetch --depth 1 origin $Ref
+        if ($LASTEXITCODE -ne 0) { throw "git fetch failed" }
+        git -C $SrcDir checkout -q FETCH_HEAD
+    }
+    else {
+        Write-Host "cloning $Ref -> $SrcDir"
+        New-Item -ItemType Directory -Force -Path (Split-Path $SrcDir) | Out-Null
+        git clone --depth 1 --branch $Ref $Repo $SrcDir
+        if ($LASTEXITCODE -ne 0) {
+            Remove-Item -Recurse -Force $SrcDir -ErrorAction SilentlyContinue
+            Write-Host "ref '$Ref' is not a branch/tag, doing a full clone" -ForegroundColor DarkGray
+            git clone $Repo $SrcDir
+            if ($LASTEXITCODE -ne 0) { throw "git clone failed" }
+            git -C $SrcDir checkout -q $Ref
+        }
+        if ($LASTEXITCODE -ne 0) { throw "git clone failed" }
+    }
 }
-finally { Pop-Location }
 
-# ----------------------------------------------------------------- install ---
-New-Item -ItemType Directory -Force -Path $DestDir | Out-Null
-Copy-Item (Join-Path $SrcDir $ExeName) (Join-Path $DestDir $ExeName) -Force
-Log "installed: $DestDir\$ExeName"
+Invoke-Stage 'Resolving dependencies (go mod download)' {
+    Push-Location $SrcDir
+    try {
+        & $Go mod download
+        if ($LASTEXITCODE -ne 0) { throw "go mod download failed" }
+    }
+    finally { Pop-Location }
+}
+
+Invoke-Stage 'Compiling (go build -trimpath -ldflags="-s -w")' {
+    Push-Location $SrcDir
+    try {
+        $env:CGO_ENABLED = '0'
+        & $Go build -trimpath -ldflags '-s -w' -o $ExeName .
+        if ($LASTEXITCODE -ne 0) { throw "go build failed" }
+        if (-not (Test-Path (Join-Path $SrcDir $ExeName))) { throw "build produced no binary" }
+    }
+    finally { Pop-Location }
+}
+
+Invoke-Stage "Installing to $DestDir" {
+    New-Item -ItemType Directory -Force -Path $DestDir | Out-Null
+    Copy-Item (Join-Path $SrcDir $ExeName) (Join-Path $DestDir $ExeName) -Force
+    Write-Host "placed $DestDir\$ExeName" -ForegroundColor DarkGray
+}
+
+Write-Progress -Activity 'OpenFlux installer' -Completed
+$total = [math]::Round(((Get-Date) - $ScriptStart).TotalSeconds, 1)
+Write-Host ''
+Write-Host "installed in ${total}s: " -ForegroundColor Green -NoNewline
+Write-Host "$DestDir\$ExeName"
 
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if ($userPath -notlike "*$DestDir*") {

@@ -203,18 +203,21 @@ Linux / macOS — одной строкой (клонирует репу, ста
 и кладёт бинарник в `/usr/local/bin`, либо в `~/.local/bin`, если первый
 недоступен для записи):
 
-```
+```bash
 curl -fsSL https://raw.githubusercontent.com/mat-674/OpenFlux/main/install.sh | bash
 ```
 
 Windows (PowerShell):
 
-```
+```powershell
 irm https://raw.githubusercontent.com/mat-674/OpenFlux/main/install.ps1 | iex
 ```
 
 Скрипты самодостаточные: если `go` не найден, они ставят приватный тулчейн
 в `~/.local/go`. Повторный запуск обновляет исходники и пересобирает.
+Прогресс печатается по этапам (`[3/6] Fetching sources (git clone main)`)
+с живой статус-строкой, таймером и процентным баром там, где инструмент его
+отдаёт; полный вывод каждого этапа лежит в `$TMPDIR/openflux-install-logs`.
 Полезные переменные окружения:
 
 | Переменная | По умолчанию | Смысл |
@@ -224,8 +227,10 @@ irm https://raw.githubusercontent.com/mat-674/OpenFlux/main/install.ps1 | iex
 | `OPENFLUX_SRC` | `~/.openflux/src` | каталог с исходниками |
 | `OPENFLUX_PREFIX` | `/usr/local/bin` или `~/.local/bin` | куда ставить |
 | `OPENFLUX_GO` | авто | использовать этот `go` |
+| `OPENFLUX_VERBOSE` | `0` | `1` = сырой вывод команд вместо спиннера |
+| `OPENFLUX_LOG_DIR` | `$TMPDIR/openflux-install-logs` | логи по этапам |
 
-```
+```bash
 OPENFLUX_REF=v1.2.3 OPENFLUX_PREFIX="$HOME/bin" bash install.sh
 ```
 

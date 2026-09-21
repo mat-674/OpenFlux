@@ -198,19 +198,23 @@ OpenFlux/
 Linux / macOS - one line (clones the repo, installs deps, builds, drops the
 binary into `/usr/local/bin`, or `~/.local/bin` if that is not writable):
 
-```
+```bash
 curl -fsSL https://raw.githubusercontent.com/mat-674/OpenFlux/main/install.sh | bash
 ```
 
 Windows (PowerShell):
 
-```
+```powershell
 irm https://raw.githubusercontent.com/mat-674/OpenFlux/main/install.ps1 | iex
 ```
 
 The scripts are self-contained: they install a private Go toolchain under
 `~/.local/go` if `go` is missing, and they are re-runnable (the second run
-updates the checkout and rebuilds). Useful env overrides:
+updates the checkout and rebuilds). Progress is printed per stage
+(`[3/6] Fetching sources (git clone main)`) with a live status line, elapsed
+time and a percentage bar whenever the underlying tool reports one; the full
+output of every stage is kept in `$TMPDIR/openflux-install-logs`. Useful env
+overrides:
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
@@ -219,8 +223,10 @@ updates the checkout and rebuilds). Useful env overrides:
 | `OPENFLUX_SRC` | `~/.openflux/src` | checkout dir |
 | `OPENFLUX_PREFIX` | `/usr/local/bin` or `~/.local/bin` | install dir |
 | `OPENFLUX_GO` | auto | use this `go` binary |
+| `OPENFLUX_VERBOSE` | `0` | `1` = stream raw command output instead of the spinner |
+| `OPENFLUX_LOG_DIR` | `$TMPDIR/openflux-install-logs` | per-stage logs |
 
-```
+```bash
 OPENFLUX_REF=v1.2.3 OPENFLUX_PREFIX="$HOME/bin" bash install.sh
 ```
 
