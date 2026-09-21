@@ -193,6 +193,37 @@ OpenFlux/
     build-flx-linux-img.sh         # Build minimal Alpine rootfs for QEMU
 ```
 
+## Install
+
+Linux / macOS - one line (clones the repo, installs deps, builds, drops the
+binary into `/usr/local/bin`, or `~/.local/bin` if that is not writable):
+
+```
+curl -fsSL https://raw.githubusercontent.com/mat-674/OpenFlux/main/install.sh | bash
+```
+
+Windows (PowerShell):
+
+```
+irm https://raw.githubusercontent.com/mat-674/OpenFlux/main/install.ps1 | iex
+```
+
+The scripts are self-contained: they install a private Go toolchain under
+`~/.local/go` if `go` is missing, and they are re-runnable (the second run
+updates the checkout and rebuilds). Useful env overrides:
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `OPENFLUX_REPO` | `https://github.com/mat-674/OpenFlux.git` | git URL |
+| `OPENFLUX_REF` | `main` | branch / tag / commit |
+| `OPENFLUX_SRC` | `~/.openflux/src` | checkout dir |
+| `OPENFLUX_PREFIX` | `/usr/local/bin` or `~/.local/bin` | install dir |
+| `OPENFLUX_GO` | auto | use this `go` binary |
+
+```
+OPENFLUX_REF=v1.2.3 OPENFLUX_PREFIX="$HOME/bin" bash install.sh
+```
+
 ## Build
 
 ```

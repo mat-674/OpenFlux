@@ -197,6 +197,38 @@ OpenFlux/
     build-flx-linux-img.sh         # Сборка минимального Alpine rootfs для QEMU
 ```
 
+## Установка
+
+Linux / macOS — одной строкой (клонирует репу, ставит зависимости, собирает
+и кладёт бинарник в `/usr/local/bin`, либо в `~/.local/bin`, если первый
+недоступен для записи):
+
+```
+curl -fsSL https://raw.githubusercontent.com/mat-674/OpenFlux/main/install.sh | bash
+```
+
+Windows (PowerShell):
+
+```
+irm https://raw.githubusercontent.com/mat-674/OpenFlux/main/install.ps1 | iex
+```
+
+Скрипты самодостаточные: если `go` не найден, они ставят приватный тулчейн
+в `~/.local/go`. Повторный запуск обновляет исходники и пересобирает.
+Полезные переменные окружения:
+
+| Переменная | По умолчанию | Смысл |
+|------------|--------------|-------|
+| `OPENFLUX_REPO` | `https://github.com/mat-674/OpenFlux.git` | git-URL |
+| `OPENFLUX_REF` | `main` | ветка / тег / коммит |
+| `OPENFLUX_SRC` | `~/.openflux/src` | каталог с исходниками |
+| `OPENFLUX_PREFIX` | `/usr/local/bin` или `~/.local/bin` | куда ставить |
+| `OPENFLUX_GO` | авто | использовать этот `go` |
+
+```
+OPENFLUX_REF=v1.2.3 OPENFLUX_PREFIX="$HOME/bin" bash install.sh
+```
+
 ## Сборка
 
 ```
