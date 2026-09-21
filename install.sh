@@ -4,7 +4,7 @@
 # Свой путь:  INSTALL_DIR=/opt/openflux bash install.sh
 set -euo pipefail
 
-REPO_URL="https://github.com/p1neappleXpress/OpenFlux.git"
+REPO_URL="${REPO_URL:-https://github.com/p1neappleXpress/OpenFlux.git}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/OpenFlux}"
 GO_PARENT="$HOME/.local"            # Go ставится в ~/.local/go (sudo не нужен)
 LOG="$(mktemp -t openflux-install.XXXXXX)"
@@ -77,10 +77,21 @@ step_check() {
 
 step_clone() {
   if [ -d "$INSTALL_DIR/.git" ]; then
-    git -C "$INSTALL_DIR" pull --ff-only
-  else
-    git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
+    # Пробуем обычное обновление
+    if git -C "$INSTALL_DIR" fetch --depth 1 origin HEAD \
+       && git -C "$INSTALL_DIR" merge --ff-only FETCH_HEAD; then
+      return 0
+    fi
+    # История разошлась / есть конфликтующие локальные правки:
+    # старую папку не удаляем, а откладываем в бэкап и клонируем заново
+    local backup="${INSTALL_DIR}.bak-$(date +%Y%m%d-%H%M%S)"
+    echo "Не удалось обновить существующую копию. Переношу её в $backup и клонирую заново."
+    mv "$INSTALL_DIR" "$backup"
+  elif [ -e "$INSTALL_DIR" ] && [ -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+    echo "Папка $INSTALL_DIR уже существует и это не git-репозиторий. Укажи другой INSTALL_DIR."
+    return 1
   fi
+  git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
 }
 
 step_go() {
